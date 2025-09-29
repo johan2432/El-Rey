@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Costo Unitario</title>
+    <!-- Carga de Tailwind CSS para un diseño responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Fuente personalizada y estilos de cuerpo para toda la aplicación (DARK MODE PREDETERMINADO) */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* Fondo muy oscuro (gray-900) */
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 1rem;
+            color: #f3f4f6; /* Texto claro (gray-100) */
+            transition: background-color 0.5s;
+        }
+        .card {
+            background-color: #1f2937; /* Gray-800 */
+            box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+            max-width: 420px;
+            transition: all 0.3s ease-in-out;
+        }
+        .input-field {
+            background-color: #374151; /* Gray-700 */
+            border: 1px solid #4b5563; /* Gray-600 */
+            color: #f3f4f6;
+            transition: border-color 0.3s, box-shadow 0.3s, background-color 0.3s;
+        }
+        .input-field:focus {
+            border-color: #6366f1; /* Indigo-500 */
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.4);
+            background-color: #1f2937;
+        }
+        /* Estilo para las filas seleccionables */
+        .suggestion-row {
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .suggestion-row:hover {
+            background-color: #374151; /* Gray-700 al pasar el ratón/tocar */
+            transform: translateY(-1px);
+        }
+        .suggestion-row:active {
+            transform: scale(0.99);
+        }
+        /* Estilo para los elementos guardados seleccionables */
+        .saved-item-row {
+             cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .saved-item-row:hover {
+            background-color: #374151; /* Gray-700 al pasar el ratón/tocar */
+        }
+
+
+        /* Estilos del Diálogo Flotante (Modal) */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.75); /* Oscurecer más el fondo */
+            display: none; /* Oculto por defecto */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            overflow-y: auto; 
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .modal.open {
+            opacity: 1;
+        }
+        .modal-content {
+            background-color: #1f2937;
+            padding: 1.5rem;
+            margin: 1rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            max-width: 90%;
+            width: 400px;
+            transform: translateY(20px);
+            opacity: 0;
+            transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+        }
+        .modal.open .modal-content {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .btn-primary {
+            background-color: #6366f1; /* Indigo-500 */
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background-color: #4f46e5; /* Indigo-600 */
+            transform: translateY(-1px);
+        }
+        .btn-primary:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card w-full p-6 sm:p-8 rounded-xl mt-4">
+        
+        <!-- Estado de Conexión y ID de Usuario -->
+        <div id="status-bar" class="flex justify-between items-center text-xs mb-6 pb-2 border-b border-gray-700">
+            <span id="user-id-display" class="text-gray-400 truncate">Usuario: Cargando...</span>
+            <div id="network-status" class="flex items-center space-x-1 p-1 px-2 rounded-full text-white font-semibold transition-colors duration-300">
+                <!-- Status indicator will be injected here -->
+            </div>
+        </div>
+
+        <!-- Contenedor Principal (Vista 1: Formulario y Lista) -->
+        <div id="app-container">
+            <!-- La lógica de JavaScript inyectará la vista principal aquí -->
+        </div>
+        
+        <!-- Contenedor de Cálculos Guardados -->
+        <div id="saved-calculations-container" class="mt-8 pt-6 border-t border-gray-700">
+            <h2 class="text-2xl font-bold text-gray-100 mb-4">Cálculos Guardados</h2>
+            <!-- Los resultados guardados se renderizarán aquí -->
+            <div id="saved-list">
+                <div class="text-center text-gray-400 p-4">Cargando datos...</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Diálogo Flotante (Modal para la Vista de Detalle) -->
+    <div id="detail-modal" class="modal">
+        <div id="modal-content-container" class="modal-content">
+            <!-- El detalle seleccionado se cargará aquí -->
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // Importante: enableIndexedDbPersistence es necesario para el modo offline
+        import { getFirestore, doc, addDoc, setDoc, onSnapshot, collection, serverTimestamp, getDocs, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+
+        // --- FIREBASE SETUP Y VARIABLES GLOBALES ---
+        setLogLevel('Debug');
+        let db;
+        let auth;
+        let userId = 'loading';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        
+        let currentUnitCost = 0; 
+        let currentPackageUnits = 0; 
+        let currentPackageCost = 0;
+        
+        // Indicador de estado de red mejorado para incluir persistencia
+        let networkStatus = {
+            isConnected: navigator.onLine, // Estado de conexión a internet del navegador
+            isPersistent: false, // Indica si la persistencia local (IndexedDB) está habilitada
+            message: 'Desconectado (Base de Datos)',
+            color: 'bg-red-600',
+            icon: '&#x26a0;' // Warning sign
+        };
+        
+        // Generamos la lista de ganancias fijas desde $0.05 hasta $5.00 con incremento de $0.05
+        const generateFixedProfits = () => {
+            const profits = [];
+            for (let profit = 0.05; profit <= 5.00; profit += 0.05) {
+                profits.push(parseFloat(profit.toFixed(2)));
+            }
+            return profits;
+        };
+
+        const FIXED_PROFITS = generateFixedProfits();
+
+        const getCalculationsCollection = () => {
+             // Ruta para datos privados del usuario
+             return collection(db, `artifacts/${appId}/users/${userId}/saved_calculations`);
+        };
+        
+        /**
+         * Actualiza la barra de estado de la red en la UI.
+         */
+        const updateNetworkStatusUI = () => {
+            const statusElement = document.getElementById('network-status');
+            const userIdElement = document.getElementById('user-id-display');
+            
+            let displayMessage;
+            let displayColor;
+            let displayIcon;
+
+            if (networkStatus.isConnected) {
+                // Estado ONLINE
+                displayIcon = '&#x2713;'; // Checkmark
+                if (networkStatus.isPersistent) {
+                    displayMessage = 'Online (Sync/Offline)';
+                    displayColor = 'bg-green-600';
+                } else {
+                    displayMessage = 'Online (Solo Sync)';
+                    displayColor = 'bg-yellow-600';
+                }
+            } else {
+                // Estado OFFLINE
+                if (networkStatus.isPersistent) {
+                    displayIcon = '&#x25cf;'; // Bullet point
+                    displayMessage = 'Offline (Guardado Local)';
+                    displayColor = 'bg-blue-600';
+                } else {
+                    displayIcon = '&#x26a0;'; // Warning
+                    displayMessage = 'Offline (Sin Guardado)';
+                    displayColor = 'bg-red-600';
+                }
+            }
+            
+            if (statusElement) {
+                statusElement.className = `flex items-center space-x-1 p-1 px-2 rounded-full text-white font-semibold transition-colors duration-300 ${displayColor}`;
+                statusElement.innerHTML = `${displayIcon}<span>${displayMessage}</span>`;
+            }
+            if (userIdElement) {
+                userIdElement.textContent = `Usuario: ${userId}`;
+            }
+        };
+
+        /**
+         * Inicializa Firebase, autentica al usuario y establece el listener de datos.
+         */
+        const initializeFirebaseAndListeners = async () => {
+            try {
+                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+
+                // --- Habilitar Persistencia Offline ---
+                await enableIndexedDbPersistence(db)
+                    .then(() => {
+                        console.log("Offline persistence enabled successfully.");
+                        networkStatus.isPersistent = true;
+                    })
+                    .catch((err) => {
+                        console.warn("Firestore persistence failed:", err.code);
+                        // Esto pasa a menudo en modo incógnito o por límites de almacenamiento.
+                        networkStatus.isPersistent = false;
+                    });
+
+                auth = getAuth(app);
+
+                const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                userId = auth.currentUser?.uid || 'anonymous';
+                
+                // Inicializa el estado de red y adjunta listeners
+                networkStatus.isConnected = navigator.onLine;
+
+                window.addEventListener('online', () => {
+                    networkStatus.isConnected = true;
+                    updateNetworkStatusUI();
+                });
+                window.addEventListener('offline', () => {
+                    networkStatus.isConnected = false;
+                    updateNetworkStatusUI();
+                });
+
+                updateNetworkStatusUI();
+                console.log('Firebase initialized. User ID:', userId);
+
+                // Después de la autenticación, iniciamos la escucha de datos guardados
+                setupFirestoreListener();
+
+            } catch (error) {
+                console.error("Error setting up Firebase:", error);
+                // Si la inicialización falla por completo, asumimos que no hay persistencia ni conexión.
+                networkStatus.isConnected = false;
+                networkStatus.isPersistent = false;
+                updateNetworkStatusUI();
+                document.getElementById('saved-list').innerHTML = `<div class="p-3 bg-red-800 text-red-300 rounded-lg">Error crítico al inicializar la base de datos: ${error.message}.</div>`;
+            }
+        };
+
+        /**
+         * Escucha cambios en tiempo real en los cálculos guardados del usuario (incluyendo datos locales/offline).
+         */
+        const setupFirestoreListener = () => {
+            if (!db || userId === 'loading') return;
+
+            const q = getCalculationsCollection();
+            
+            // onSnapshot maneja automáticamente el modo offline si la persistencia está activa
+            onSnapshot(q, (snapshot) => {
+                const savedItems = [];
+                snapshot.forEach(doc => {
+                    savedItems.push({ id: doc.id, ...doc.data() });
+                });
+                renderSavedCalculations(savedItems);
+                
+                // Actualizamos el estado de la lista si los datos vienen del caché (estamos offline)
+                if (snapshot.metadata.fromCache && !networkStatus.isConnected) {
+                    document.getElementById('saved-list').insertAdjacentHTML('afterbegin', 
+                        `<div id="cache-alert" class="p-3 mb-3 bg-blue-900 text-blue-300 rounded-lg">Mostrando datos del caché. No hay conexión a la nube.</div>`
+                    );
+                } else {
+                    const cacheAlert = document.getElementById('cache-alert');
+                    if (cacheAlert) cacheAlert.remove();
+                }
+
+            }, (error) => {
+                console.error("Error listening to Firestore:", error);
+                document.getElementById('saved-list').innerHTML = `<div class="p-3 bg-yellow-800 text-yellow-300 rounded-lg">Error al sincronizar datos.</div>`;
+            });
+        };
+
+        // --- UTILIDADES ---
+        const safeParseFloat = (valueStr) => {
+            if (!valueStr) return 0;
+            const cleanStr = valueStr.toString().replace(',', '.');
+            return Math.max(0, parseFloat(cleanStr) || 0);
+        };
+
+        const formatCurrency = (amount) => {
+            return new Intl.NumberFormat('es-ES', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2
+            }).format(amount);
+        };
+        
+        /**
+         * Limpia las variables globales y la vista principal para un nuevo cálculo.
+         */
+        const resetCalculationInputs = () => {
+            // 1. Limpiar variables globales
+            currentUnitCost = 0;
+            currentPackageUnits = 0;
+            currentPackageCost = 0;
+
+            // 2. Limpiar inputs del formulario
+            const packageCostInput = document.getElementById('packageCost');
+            const packageUnitsInput = document.getElementById('packageUnits');
+            
+            if (packageCostInput) packageCostInput.value = '';
+            if (packageUnitsInput) packageUnitsInput.value = '';
+            
+            // 3. Volver a renderizar la vista principal sin resultados
+            renderMainView(0, []);
+        };
+
+
+        // --- LÓGICA DE CÁLCULO ---
+
+        /**
+         * Recalcula todas las métricas basadas en un nuevo Precio de Venta (sellingPrice).
+         */
+        window.recalculateFromSellingPrice = (sellingPriceInput) => {
+            const sellingPrice = safeParseFloat(sellingPriceInput.value);
+            const detailContainer = document.getElementById('detail-results');
+            const saveButton = document.getElementById('save-button');
+
+            if (currentUnitCost <= 0 || sellingPrice <= currentUnitCost) {
+                detailContainer.innerHTML = `
+                    <div class="p-3 bg-red-800 border border-red-600 rounded-lg text-red-300 font-semibold text-sm mt-3">
+                        El precio de venta debe ser mayor que el costo unitario de ${formatCurrency(currentUnitCost)}.
+                    </div>
+                `;
+                // Deshabilitar botón de guardar si el cálculo es inválido
+                if(saveButton) saveButton.disabled = true;
+                return;
+            }
+            
+            // Habilitar el botón de guardar si el cálculo es válido y la persistencia está disponible
+            if(saveButton) saveButton.disabled = !networkStatus.isPersistent && !networkStatus.isConnected;
+
+            // Cálculos principales
+            const fixedProfit = sellingPrice - currentUnitCost;
+            const profitTotal = fixedProfit * currentPackageUnits;
+            const totalRevenue = sellingPrice * currentPackageUnits;
+            const markupPercent = (fixedProfit / currentUnitCost) * 100;
+            const marginOnSale = (sellingPrice > 0) ? (fixedProfit / sellingPrice) * 100 : 0;
+
+            const item = {
+                fixedProfit,
+                sellingPrice,
+                markupPercent: parseFloat(markupPercent.toFixed(2)),
+                marginOnSale: parseFloat(marginOnSale.toFixed(2)),
+                profitTotal: parseFloat(profitTotal.toFixed(2)),
+                totalRevenue: parseFloat(totalRevenue.toFixed(2))
+            };
+
+            // Volver a renderizar los detalles, conservando el input editable
+            renderDetailResults(item, detailContainer);
+        };
+        
+        /**
+         * Función principal que calcula el costo unitario y las sugerencias.
+         */
+        const calculatePricing = () => {
+            const packageCostInput = document.getElementById('packageCost');
+            const packageUnitsInput = document.getElementById('packageUnits');
+
+            if (!packageCostInput || !packageUnitsInput) {
+                if (document.getElementById('app-container').innerHTML === '') {
+                     renderMainView();
+                }
+                return;
+            }
+
+            currentPackageCost = safeParseFloat(packageCostInput.value);
+            currentPackageUnits = parseInt(packageUnitsInput.value) || 0;
+
+            if (currentPackageUnits <= 0 || currentPackageCost <= 0) {
+                renderMainView(0, []); 
+                return;
+            }
+
+            currentUnitCost = currentPackageCost / currentPackageUnits;
+            
+            const suggestions = FIXED_PROFITS.map(fixedProfit => {
+                const sellingPrice = currentUnitCost + fixedProfit;
+                const profitTotal = fixedProfit * currentPackageUnits;
+                const totalRevenue = sellingPrice * currentPackageUnits;
+                const markupPercent = (fixedProfit / currentUnitCost) * 100;
+                const marginOnSale = (sellingPrice > 0) ? (fixedProfit / sellingPrice) * 100 : 0;
+
+                return {
+                    fixedProfit,
+                    sellingPrice: parseFloat(sellingPrice.toFixed(2)),
+                    markupPercent: parseFloat(markupPercent.toFixed(2)),
+                    marginOnSale: parseFloat(marginOnSale.toFixed(2)),
+                    profitTotal: parseFloat(profitTotal.toFixed(2)),
+                    totalRevenue: parseFloat(totalRevenue.toFixed(2))
+                };
+            });
+
+            renderMainView(currentUnitCost, suggestions);
+        };
+
+        /**
+         * Maneja la selección de un precio sugerido y muestra el modal de detalles.
+         * @param {object} item - El objeto de sugerencia seleccionado.
+         */
+        window.selectSuggestion = (item) => {
+            // Estos valores son para el cálculo del modal
+            currentPackageCost = safeParseFloat(document.getElementById('packageCost')?.value || '0');
+            currentPackageUnits = parseInt(document.getElementById('packageUnits')?.value) || 0;
+            
+            renderDetailModal(item); // Modo nuevo/editable
+            const modal = document.getElementById('detail-modal');
+            modal.style.display = 'flex';
+            // Trigger animation
+            setTimeout(() => modal.classList.add('open'), 10);
+        };
+
+        /**
+         * Cierra el modal de detalles.
+         */
+        window.closeModal = () => {
+            const modal = document.getElementById('detail-modal');
+            modal.classList.remove('open');
+            // Wait for animation to finish before hiding
+            setTimeout(() => modal.style.display = 'none', 300);
+        };
+        
+        // --- LÓGICA DE GUARDAR / ACTUALIZAR ---
+
+        /**
+         * Guarda o actualiza un cálculo en Firestore.
+         */
+        window.saveCalculation = async (isUpdate = false, docId = null) => {
+            const modalContentContainer = document.getElementById('modal-content-container');
+            const saveButton = document.getElementById('save-button');
+            
+            // Borrar alertas previas
+            const prevAlert = document.getElementById('offline-save-alert');
+            if (prevAlert) prevAlert.remove();
+            
+            // 1. Verificación de Capacidad de Guardado
+            if (!networkStatus.isPersistent && !networkStatus.isConnected) {
+                 modalContentContainer.insertAdjacentHTML('beforeend', 
+                    `<div id="offline-save-alert" class="p-3 mt-4 bg-red-800 text-red-300 rounded-lg">¡Alerta! La persistencia local no está disponible. Necesitas conexión a Internet para guardar.</div>`
+                );
+                return;
+            }
+
+            const nameInput = document.getElementById('productNameInput');
+            const priceInput = document.getElementById('sellingPriceInput');
+
+            const productName = nameInput.value.trim();
+            const sellingPrice = safeParseFloat(priceInput.value);
+
+            if (!productName || sellingPrice <= currentUnitCost) {
+                modalContentContainer.insertAdjacentHTML('beforeend', 
+                    `<div id="offline-save-alert" class="p-3 mt-4 bg-red-800 text-red-300 rounded-lg">Por favor, ingresa un nombre válido y un precio de venta mayor al costo unitario.</div>`
+                );
+                return;
+            }
+
+            saveButton.disabled = true;
+            saveButton.textContent = isUpdate ? 'Actualizando...' : 'Guardando...';
+
+            // 2. Mostrar advertencia si se guarda localmente (Offline)
+            if (!networkStatus.isConnected && networkStatus.isPersistent) {
+                 modalContentContainer.insertAdjacentHTML('beforeend', 
+                    `<div id="offline-save-alert" class="p-3 mt-4 bg-blue-800 text-blue-300 rounded-lg">Guardando localmente. Se sincronizará automáticamente cuando te conectes.</div>`
+                );
+            }
+
+            // 3. Preparar datos y Guardar
+            const fixedProfit = sellingPrice - currentUnitCost;
+            
+            const dataToSave = {
+                name: productName,
+                packageCost: currentPackageCost,
+                packageUnits: currentPackageUnits,
+                unitCost: currentUnitCost,
+                sellingPrice: sellingPrice,
+                fixedProfit: fixedProfit,
+                updatedAt: serverTimestamp(),
+            };
+
+            try {
+                if (isUpdate && docId) {
+                    // setDoc se encarga de la sincronización en background/offline
+                    await setDoc(doc(getCalculationsCollection(), docId), dataToSave, { merge: true });
+                    console.log("Document successfully updated (locally or cloud).");
+                } else {
+                    dataToSave.createdAt = serverTimestamp();
+                    // addDoc se encarga de la sincronización en background/offline
+                    await addDoc(getCalculationsCollection(), dataToSave);
+                    console.log("Document successfully written (locally or cloud).");
+                }
+                
+                // --- AJUSTE SOLICITADO: Limpiar la aplicación después de guardar ---
+                // Esperar un breve momento si se está guardando offline para que el usuario vea el mensaje
+                if (!networkStatus.isConnected && networkStatus.isPersistent) {
+                     setTimeout(() => {
+                        closeModal();
+                        resetCalculationInputs(); // Limpiar y resetear la vista
+                    }, 1500); 
+                } else {
+                    closeModal();
+                    resetCalculationInputs(); // Limpiar y resetear la vista
+                }
+                // ------------------------------------------------------------------
+
+            } catch (e) {
+                console.error("Error saving document: ", e);
+                // Si la función falla, incluso con persistencia, es un error crítico.
+                document.getElementById('offline-save-alert').remove(); // Remover mensaje temporal
+                modalContentContainer.insertAdjacentHTML('beforeend', 
+                    `<div class="p-3 mt-4 bg-red-800 text-red-300 rounded-lg">Error al guardar: ${e.message}</div>`
+                );
+            } finally {
+                // Si se guardó correctamente (incluso offline), el botón se restablece.
+                saveButton.disabled = false;
+                saveButton.textContent = isUpdate ? 'Actualizar Producto' : 'Guardar Producto';
+            }
+        };
+
+        /**
+         * Carga los datos de un cálculo guardado para edición o visualización.
+         */
+        const loadCalculationData = (savedItem) => {
+            // Establecer las variables globales con los datos guardados
+            // Esto es crucial para que los cálculos en el modal se basen en el costo guardado
+            currentPackageCost = savedItem.packageCost;
+            currentPackageUnits = savedItem.packageUnits;
+            currentUnitCost = savedItem.unitCost;
+
+            // Calcular las métricas completas para el modal
+            const fixedProfit = savedItem.sellingPrice - savedItem.unitCost;
+            const item = {
+                id: savedItem.id,
+                name: savedItem.name,
+                sellingPrice: savedItem.sellingPrice,
+                fixedProfit: fixedProfit,
+                profitTotal: fixedProfit * savedItem.packageUnits,
+                totalRevenue: savedItem.sellingPrice * savedItem.packageUnits,
+                markupPercent: (fixedProfit / savedItem.unitCost) * 100,
+                marginOnSale: (fixedProfit / savedItem.sellingPrice) * 100,
+            };
+            return item;
+        }
+
+
+        /**
+         * Muestra el modal en modo visualización (al tocar el elemento guardado).
+         */
+        window.viewCalculation = (savedItem) => {
+            const item = loadCalculationData(savedItem);
+            
+            // Renderizar el modal en modo visualización (isEdit = false, isViewOnly = true)
+            renderDetailModal(item, false, true); 
+            const modal = document.getElementById('detail-modal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('open'), 10);
+        };
+
+
+        /**
+         * Muestra el modal en modo edición (al tocar el botón 'Editar').
+         */
+        window.loadCalculationForEdit = (savedItem) => {
+            const item = loadCalculationData(savedItem);
+            
+            // Renderizar el modal en modo edición (isEdit = true, isViewOnly = false)
+            renderDetailModal(item, true, false); 
+            const modal = document.getElementById('detail-modal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('open'), 10);
+        };
+
+        // --- RENDERING (VISTAS) ---
+
+        /**
+         * Renderiza la vista principal con el formulario y la lista de sugerencias.
+         */
+        const renderMainView = (unitCost = 0, suggestions = []) => {
+            const appContainer = document.getElementById('app-container');
+            
+            // Usamos el valor de las variables globales para mantener el estado si se está calculando,
+            // pero si se reseteó (unitCost=0), los valores de los inputs serán vacíos.
+            const packageCostValue = currentPackageCost > 0 ? currentPackageCost.toString() : '';
+            const packageUnitsValue = currentPackageUnits > 0 ? currentPackageUnits.toString() : '';
+
+            const mainHTML = `
+                <h1 class="text-3xl font-extrabold text-gray-100 mb-2">Calculadora de Precios</h1>
+                <p class="text-gray-400 mb-6">Ingresa los datos para obtener el costo unitario y una lista de precios sugeridos.</p>
+
+                <!-- Formulario de Entradas -->
+                <form id="pricing-form" class="space-y-4">
+                    <div>
+                        <label for="packageCost" class="block text-sm font-semibold text-gray-300 mb-1">Costo Total del Paquete ($)</label>
+                        <input type="text" id="packageCost" value="${packageCostValue}" min="0" placeholder="Ej: 100.75 o 100,75" class="input-field w-full p-3 rounded-lg focus:outline-none" required>
+                    </div>
+                    <div>
+                        <label for="packageUnits" class="block text-sm font-semibold text-gray-300 mb-1">Unidades Contenidas en el Paquete</label>
+                        <input type="number" id="packageUnits" value="${packageUnitsValue}" min="1" placeholder="Ej: 10" class="input-field w-full p-3 rounded-lg focus:outline-none" required>
+                    </div>
+                </form>
+                
+                <!-- Contenedor para resultados (se actualiza dinámicamente) -->
+                <div id="results-container" class="space-y-4 mt-8">
+                    ${(unitCost > 0) ? generateResultsHTML(unitCost, suggestions) : displayInitialMessage()}
+                </div>
+            `;
+            
+            appContainer.innerHTML = mainHTML;
+            
+            // Re-adjuntar Event Listeners después de renderizar el DOM
+            const newPackageCostInput = document.getElementById('packageCost');
+            const newPackageUnitsInput = document.getElementById('packageUnits');
+            const form = document.getElementById('pricing-form');
+
+            if (newPackageCostInput && newPackageUnitsInput) {
+                newPackageCostInput.addEventListener('input', calculatePricing);
+                newPackageUnitsInput.addEventListener('input', calculatePricing);
+                form.addEventListener('submit', (e) => e.preventDefault());
+            }
+        };
+
+        /**
+         * Mensaje inicial cuando no hay datos ingresados.
+         */
+        const displayInitialMessage = () => {
+             return `
+                <div class="p-4 bg-gray-700 border-l-4 border-yellow-500 text-yellow-300 rounded-lg" role="alert">
+                    <p class="font-bold">Esperando Datos</p>
+                    <p>Ingresa el costo del paquete y la cantidad de unidades para ver las sugerencias de precios.</p>
+                </div>
+            `;
+        }
+
+        /**
+         * Genera el HTML de los resultados y la tabla de sugerencias.
+         */
+        const generateResultsHTML = (unitCost, suggestions) => {
+            let suggestionsHTML = `
+                <div class="p-4 bg-indigo-900 border border-indigo-700 rounded-xl mb-6 shadow-lg transition-all duration-300">
+                    <h2 class="text-lg font-semibold mb-2 text-indigo-300">Costo Unitario Calculado</h2>
+                    <div class="flex justify-between items-center">
+                        <span class="text-md text-gray-300">Costo por Unidad:</span>
+                        <span class="text-3xl font-extrabold text-indigo-400">${formatCurrency(unitCost)}</span>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-gray-800 border border-gray-700 rounded-xl transition-all duration-300">
+                    <h2 class="text-xl font-bold mb-4 text-gray-100">Lista de Precios Sugeridos</h2>
+                    <p class="text-sm text-gray-400 mb-4">Elige un precio de venta basado en la Ganancia Fija por Unidad.</p>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-700">
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-bold text-gray-300 uppercase tracking-wider">Ganancia Fija ($)</th>
+                                    <th class="px-3 py-2 text-left text-xs font-bold text-gray-300 uppercase tracking-wider">Markup (%)</th>
+                                    <th class="px-3 py-2 text-right text-xs font-bold text-gray-300 uppercase tracking-wider">Precio Sugerido</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-700">
+            `;
+            
+            suggestions.forEach((item, index) => {
+                const rowClass = index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-700';
+                
+                const itemJson = JSON.stringify(item).replace(/"/g, '&quot;'); 
+
+                suggestionsHTML += `
+                                <tr class="${rowClass} suggestion-row" onclick="selectSuggestion(JSON.parse('${itemJson}'))">
+                                    <td class="px-3 py-3 whitespace-nowrap text-sm font-medium text-green-400">${formatCurrency(item.fixedProfit)}</td>
+                                    <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-300">${item.markupPercent.toFixed(2)}%</td>
+                                    <td class="px-3 py-3 whitespace-nowrap text-lg font-extrabold text-right text-indigo-400">${formatCurrency(item.sellingPrice)}</td>
+                                </tr>
+                `;
+            });
+
+            suggestionsHTML += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            return suggestionsHTML;
+        };
+        
+        /**
+         * Renderiza la lista de cálculos guardados.
+         */
+        const renderSavedCalculations = (items) => {
+            const container = document.getElementById('saved-list');
+            
+            if (items.length === 0) {
+                container.innerHTML = `<div class="p-4 bg-gray-700 text-blue-300 rounded-lg">Aún no hay cálculos guardados. Guarda un producto desde el modal de detalle.</div>`;
+                return;
+            }
+
+            let listHTML = `<div class="space-y-3">`;
+
+            items.forEach(item => {
+                const itemJson = JSON.stringify(item).replace(/"/g, '&quot;');
+                listHTML += `
+                    <div class="p-4 border border-gray-700 bg-gray-800 rounded-xl flex justify-between items-center shadow-md transition-all duration-300 saved-item-row">
+                        <div onclick="viewCalculation(JSON.parse('${itemJson}'))" class="flex-grow pr-4">
+                            <p class="text-lg font-bold text-gray-100">${item.name}</p>
+                            <p class="text-sm text-gray-400">Precio de Venta: <span class="font-semibold text-indigo-400">${formatCurrency(item.sellingPrice)}</span></p>
+                            <p class="text-xs text-gray-500">Costo Unitario: ${formatCurrency(item.unitCost)} (${item.packageUnits} unidades)</p>
+                        </div>
+                        <button onclick="loadCalculationForEdit(JSON.parse('${itemJson}'))" class="text-indigo-400 hover:text-indigo-200 font-semibold py-2 px-3 border border-indigo-900 rounded-lg transition duration-150 hover:bg-indigo-900 flex-shrink-0">
+                            Editar
+                        </button>
+                    </div>
+                `;
+            });
+
+            listHTML += `</div>`;
+            container.innerHTML = listHTML;
+        };
+        
+        /**
+         * Renderiza el contenido dentro del modal para la sugerencia seleccionada (Nuevo, Edición o Visualización).
+         * @param {object} item - El objeto de sugerencia/cálculo.
+         * @param {boolean} [isEdit=false] - Si está en modo edición.
+         * @param {boolean} [isViewOnly=false] - Si está en modo solo visualización (al tocar el guardado).
+         */
+        const renderDetailModal = (item, isEdit = false, isViewOnly = false) => {
+            const modalContentContainer = document.getElementById('modal-content-container');
+            
+            const isSaveMode = !isViewOnly;
+            
+            const actionText = isEdit ? 'Actualizar Producto' : 'Guardar Producto';
+            const actionFunction = isEdit ? `saveCalculation(true, '${item.id}')` : 'saveCalculation(false)';
+            const initialName = item.name || '';
+            
+            // Deshabilitar si ni la persistencia ni la conexión están activas (solo aplica si estamos en modo guardado/edición)
+            const canSave = networkStatus.isPersistent || networkStatus.isConnected;
+            const isDisabled = (isSaveMode && !canSave) ? 'disabled' : '';
+            const buttonHint = canSave ? '' : `title="Necesitas conexión o persistencia local activa para guardar."`;
+
+            const detailHTML = `
+                <div class="flex justify-between items-center border-b border-gray-700 pb-3 mb-4">
+                    <h2 class="text-2xl font-bold text-gray-100">${isViewOnly ? 'Detalles de Producto' : (isEdit ? 'Editar Precio' : 'Detalles de Precio')}</h2>
+                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-100 text-2xl font-semibold leading-none transition-colors">&times;</button>
+                </div>
+                
+                <!-- Nombre del Producto (Nuevo Campo) -->
+                <div class="mb-4">
+                    <label for="productNameInput" class="block text-sm font-semibold text-gray-300 mb-1">Nombre del Producto</label>
+                    ${isViewOnly 
+                        ? `<p class="text-xl font-bold text-indigo-300 p-2 bg-gray-700 rounded-lg">${initialName}</p>` 
+                        : `<input 
+                            type="text" 
+                            id="productNameInput" 
+                            value="${initialName}" 
+                            placeholder="Ej: Camiseta Talla M"
+                            class="input-field w-full p-3 rounded-lg focus:outline-none text-md font-semibold"
+                            required
+                          />`
+                    }
+                </div>
+
+                <!-- Resumen del Precio Sugerido (EDITABLE/FIJO) -->
+                <div class="p-4 bg-indigo-900 border border-indigo-700 rounded-xl mb-4 text-center transition-all duration-300">
+                    <span class="text-sm font-medium text-indigo-300 block mb-1">Precio de Venta por Unidad:</span>
+                    <div class="flex items-center justify-center space-x-2">
+                        <span class="text-3xl font-extrabold text-indigo-400">$</span>
+                        ${isViewOnly
+                            ? `<span class="text-4xl font-extrabold text-indigo-400">${item.sellingPrice.toFixed(2)}</span>`
+                            : `<input 
+                                type="text" 
+                                id="sellingPriceInput" 
+                                value="${item.sellingPrice.toFixed(2)}" 
+                                oninput="recalculateFromSellingPrice(this)"
+                                class="text-4xl font-extrabold text-indigo-400 bg-transparent border-none p-0 focus:outline-none focus:ring-0 w-32 text-center"
+                            />`
+                        }
+                    </div>
+                    ${!isViewOnly ? '<p class="text-xs text-gray-400 mt-1">Edita el valor para recalcular</p>' : ''}
+                </div>
+                
+                <!-- Contenedor para los resultados detallados (se actualizan dinámicamente) -->
+                <div id="detail-results">
+                    <!-- Se llena con renderDetailResults(item) -->
+                </div>
+
+                <!-- Botón de Guardar/Actualizar (Oculto en modo visualización) -->
+                ${isSaveMode ? `
+                    <div class="mt-6 text-center">
+                        <button id="save-button" onclick="${actionFunction}" class="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed" ${isDisabled} ${buttonHint}>
+                            ${actionText}
+                        </button>
+                    </div>
+                ` : ''}
+            `;
+            
+            modalContentContainer.innerHTML = detailHTML;
+            
+            // Si estamos en modo nuevo, debemos establecer los valores globales
+            if (!isEdit && !isViewOnly) {
+                 // Estos valores son necesarios para el saveCalculation final
+                currentPackageCost = safeParseFloat(document.getElementById('packageCost')?.value || '0');
+                currentPackageUnits = parseInt(document.getElementById('packageUnits')?.value) || 0;
+            }
+
+            const detailContainer = document.getElementById('detail-results');
+            renderDetailResults(item, detailContainer);
+            
+            // Solo recalcular y chequear estado si es un modo editable/nuevo
+            if (!isViewOnly) {
+                 window.recalculateFromSellingPrice(document.getElementById('sellingPriceInput'));
+            }
+        };
+        
+        /**
+         * Genera el HTML para los resultados detallados dentro del modal.
+         */
+        const renderDetailResults = (item, container) => {
+            const initialInvestment = currentPackageCost;
+            const totalUnits = currentPackageUnits;
+
+            const resultsHTML = `
+                <div class="space-y-4">
+                    
+                    <!-- Detalle Unitario -->
+                    <h3 class="text-lg font-semibold text-gray-300 border-b border-gray-700 pb-1">Desglose Unitario</h3>
+                    <div class="p-3 bg-gray-800 border border-gray-700 rounded-lg space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Costo por Unidad:</span>
+                            <span class="font-semibold text-red-400">${formatCurrency(currentUnitCost)}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Ganancia por Unidad:</span>
+                            <span class="font-bold text-green-500" id="detail-profit-unit">${formatCurrency(item.fixedProfit)}</span>
+                        </div>
+                    </div>
+
+                    <!-- Métricas Totales -->
+                    <h3 class="text-lg font-semibold text-gray-300 border-b border-gray-700 pb-1">Proyección Total (para ${totalUnits} unidades)</h3>
+                    <div class="p-3 bg-gray-800 border border-gray-700 rounded-lg space-y-2 text-sm">
+                        <div class="flex justify-between border-b border-gray-700 pb-2">
+                            <span class="text-gray-400 font-medium">Inversión Inicial (Costo del Paquete):</span>
+                            <span class="font-semibold text-gray-200">${formatCurrency(initialInvestment)}</span>
+                        </div>
+                        
+                        <!-- Ganancia Total Solicitada -->
+                        <div class="flex justify-between pt-2">
+                            <span class="text-gray-300 font-bold">GANANCIA TOTAL PROYECTADA:</span>
+                            <span class="font-extrabold text-green-500" id="detail-profit-total">${formatCurrency(item.profitTotal)}</span>
+                        </div>
+                        <!-- Ingreso Total (Ganancia + Inversión) Solicitado -->
+                        <div class="flex justify-between pt-2 border-t border-gray-700 mt-2">
+                            <span class="text-gray-300 font-bold">INGRESO TOTAL PROYECTADO:</span>
+                            <span class="font-extrabold text-indigo-400" id="detail-revenue-total">${formatCurrency(item.totalRevenue)}</span>
+                        </div>
+                    </div>
+
+
+                    <!-- Porcentajes -->
+                    <h3 class="text-lg font-semibold text-gray-300 border-b border-gray-700 pb-1">Análisis Porcentual</h3>
+                     <div class="p-3 bg-gray-800 border border-gray-700 rounded-lg space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Markup (Margen sobre Costo):</span>
+                            <span class="font-semibold text-blue-400" id="detail-markup">${item.markupPercent.toFixed(2)}%</span>
+                        </div>
+                         <div class="flex justify-between">
+                            <span class="text-gray-400">Margen Real (sobre Venta):</span>
+                            <span class="font-semibold text-gray-300" id="detail-margin-sale">${item.marginOnSale.toFixed(2)}%</span>
+                        </div>
+                    </div>
+
+                </div>
+            `;
+            
+            container.innerHTML = resultsHTML;
+        };
+        
+        // --- INICIALIZACIÓN ---
+        window.onload = () => {
+            renderMainView();
+            initializeFirebaseAndListeners(); // Inicializar Firebase
+            
+            // Asegurarse de que al hacer clic fuera del modal se cierre (usando el evento 'click' en el fondo)
+            document.getElementById('detail-modal').addEventListener('click', (event) => {
+                if (event.target.id === 'detail-modal') {
+                    closeModal();
+                }
+            });
+        };
+
+    </script>
+</body>
+</html>
+
